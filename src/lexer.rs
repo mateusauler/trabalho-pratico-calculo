@@ -189,7 +189,7 @@ impl Lexer {
 				if let Some(c) = c {
 					lexema.push(c);
 				}
-			} else if backtrack {
+			} else if backtrack && c.is_some() {
 				lexema.pop();
 				self.caractere_atual -= 1;
 			}
