@@ -94,7 +94,8 @@ impl Lexer {
 	pub fn proximo_token(&mut self) -> Token {
 		use Estados::*;
 		use TipoToken::*;
-		let c = self.proximo_caractere();
+
+		let mut c = self.proximo_caractere();
 
 		if c.is_none() {
 			return Token {
@@ -103,13 +104,12 @@ impl Lexer {
 			};
 		}
 
-		let mut c = c.unwrap();
-
 		let mut estado = Estados::Inicial;
-		let mut tipo_token = None;
 		let mut backtrack = false;
-		let mut lexema = String::from(c);
 		let mut fim = false;
+
+		let mut tipo_token = None;
+		let mut lexema = String::from(c.unwrap());
 
 		while !fim {
 			match estado {
@@ -119,59 +119,59 @@ impl Lexer {
 						fim = true;
 					} else {
 						match c {
-							'0'..='9' => {
+							Some('0'..='9') => {
 								estado = NumeroInteiro;
 								tipo_token = Some(Numero);
 								backtrack = true;
 							}
 
-							'a'..='z' => {
+							Some('a'..='z') => {
 								estado = Identificador;
 								backtrack = true;
 							}
 
-							' ' | '\n' | '\r' | '\t' => lexema.clear(),
+							Some(' ' | '\n' | '\r' | '\t') => lexema.clear(),
 
-							_ => Lexer::caractere_inesperado(c),
+							Some(c) => Lexer::caractere_inesperado(c),
+
+							None => {
+								tipo_token = Some(EOF);
+								fim = true;
+							}
 						}
 					}
 				}
 
 				NumeroInteiro => match c {
-					'0'..='9' => (),
-					'.' => estado = Ponto,
+					Some('0'..='9') => (),
+					Some('.') => estado = Ponto,
 					_ => fim = true,
 				},
 
 				Ponto => match c {
-					'0'..='9' => estado = NumeroFracionario,
+					Some('0'..='9') => estado = NumeroFracionario,
 					_ => Lexer::token_nao_reconhecido(&lexema),
 				},
 
 				NumeroFracionario => match c {
-					'0'..='9' => (),
+					Some('0'..='9') => (),
 					_ => fim = true,
 				},
 
 				Identificador => match c {
-					'a'..='z' => (),
+					Some('a'..='z') => (),
 					_ => fim = true,
 				},
 			}
-			if fim {
-				if backtrack {
-					lexema.pop();
-					self.caractere_atual -= 1;
+
+			if !fim {
+				c = self.proximo_caractere();
+				if let Some(c) = c {
+					lexema.push(c);
 				}
-			} else {
-				match self.proximo_caractere() {
-					Some(ch) => c = ch,
-					None => {
-						c = ' ';
-						backtrack = true;
-					}
-				}
-				lexema.push(c);
+			} else if backtrack {
+				lexema.pop();
+				self.caractere_atual -= 1;
 			}
 		}
 
