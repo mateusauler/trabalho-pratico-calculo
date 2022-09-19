@@ -152,7 +152,7 @@ impl Lexer {
 
 							Some(' ' | '\n' | '\r' | '\t') => lexema.clear(),
 
-							Some(c) => Lexer::caractere_inesperado(c),
+							Some(c) => caractere_inesperado(c),
 
 							None => {
 								tipo_token = Some(EOF);
@@ -170,7 +170,7 @@ impl Lexer {
 
 				Ponto => match c {
 					Some('0'..='9') => estado = NumeroFracionario,
-					_ => Lexer::token_nao_reconhecido(&lexema),
+					_ => token_nao_reconhecido(&lexema),
 				},
 
 				NumeroFracionario => match c {
@@ -198,7 +198,7 @@ impl Lexer {
 		if tipo_token.is_none() {
 			tipo_token = self.tokens_com_texto_definido.get(&lexema).cloned();
 			if tipo_token.is_none() {
-				Lexer::token_nao_reconhecido(&lexema);
+				token_nao_reconhecido(&lexema);
 			}
 		}
 
@@ -217,12 +217,54 @@ impl Lexer {
 		self.caractere_atual += 1;
 		return caractere;
 	}
+}
 
-	fn token_nao_reconhecido(lexema: &String) {
-		panic!("Token não reconhecido: \"{lexema}\"");
-	}
+fn token_nao_reconhecido(lexema: &String) {
+	panic!("Token não reconhecido: \"{lexema}\"");
+}
 
-	fn caractere_inesperado(caractere: char) {
-		panic!("Caractere inesperado: '{caractere}'");
-	}
+fn caractere_inesperado(caractere: char) {
+	panic!("Caractere inesperado: '{caractere}'");
+}
+
+#[test]
+fn ignorar_espacos() {
+	use TipoToken::*;
+	let mut l = Lexer::new("  \t \n  \r  \r\n\t ");
+	assert_eq!(l.proximo_token().tipo(), EOF);
+}
+
+#[test]
+fn numeros() {
+	use TipoToken::*;
+
+	let mut l = Lexer::new("0 1 2.3 0.4 005 67.89");
+
+	assert_eq!(l.proximo_token().tipo(), Numero);
+	assert_eq!(l.proximo_token().tipo(), Numero);
+	assert_eq!(l.proximo_token().tipo(), Numero);
+	assert_eq!(l.proximo_token().tipo(), Numero);
+	assert_eq!(l.proximo_token().tipo(), Numero);
+	assert_eq!(l.proximo_token().tipo(), Numero);
+	assert_eq!(l.proximo_token().tipo(), EOF);
+}
+
+#[test]
+fn operadores_basicos() {
+	use TipoToken::*;
+
+	let mut l = Lexer::new("1 + 2 - 3 * 4 / 5 ^ 6");
+
+	assert_eq!(l.proximo_token().tipo(), Numero);
+	assert_eq!(l.proximo_token().tipo(), Mais);
+	assert_eq!(l.proximo_token().tipo(), Numero);
+	assert_eq!(l.proximo_token().tipo(), Menos);
+	assert_eq!(l.proximo_token().tipo(), Numero);
+	assert_eq!(l.proximo_token().tipo(), Asterisco);
+	assert_eq!(l.proximo_token().tipo(), Numero);
+	assert_eq!(l.proximo_token().tipo(), Barra);
+	assert_eq!(l.proximo_token().tipo(), Numero);
+	assert_eq!(l.proximo_token().tipo(), Potencia);
+	assert_eq!(l.proximo_token().tipo(), Numero);
+	assert_eq!(l.proximo_token().tipo(), EOF);
 }
