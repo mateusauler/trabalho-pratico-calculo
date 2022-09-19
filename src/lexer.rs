@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
-#[derive(Clone, Copy, Debug, EnumIter, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, EnumIter, PartialEq)]
 pub enum TipoToken {
 	AbreParenteses,  // (
 	FechaParenteses, // )
@@ -77,7 +77,6 @@ impl Token {
 	}
 }
 
-#[derive(PartialEq)]
 enum Estados {
 	Inicial,
 
