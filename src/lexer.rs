@@ -227,44 +227,55 @@ fn caractere_inesperado(caractere: char) {
 	panic!("Caractere inesperado: '{caractere}'");
 }
 
-#[test]
-fn ignorar_espacos() {
-	use TipoToken::*;
-	let mut l = Lexer::new("  \t \n  \r  \r\n\t ");
-	assert_eq!(l.proximo_token().tipo(), EOF);
-}
+#[cfg(test)]
+mod testes {
+	use super::{
+		Lexer,
+		TipoToken::{self, *},
+	};
 
-#[test]
-fn numeros() {
-	use TipoToken::*;
+	#[test]
+	fn ignorar_espacos() {
+		let mut l = Lexer::new("  \t \n  \r  \r\n\t ");
+		test_token(&mut l, EOF, None)
+	}
 
-	let mut l = Lexer::new("0 1 2.3 0.4 005 67.89");
+	#[test]
+	fn numeros() {
+		let mut l = Lexer::new("0 1 2.3 0.4 005 67.89");
 
-	assert_eq!(l.proximo_token().tipo(), Numero);
-	assert_eq!(l.proximo_token().tipo(), Numero);
-	assert_eq!(l.proximo_token().tipo(), Numero);
-	assert_eq!(l.proximo_token().tipo(), Numero);
-	assert_eq!(l.proximo_token().tipo(), Numero);
-	assert_eq!(l.proximo_token().tipo(), Numero);
-	assert_eq!(l.proximo_token().tipo(), EOF);
-}
+		test_token(&mut l, Numero, Some("0"));
+		test_token(&mut l, Numero, Some("1"));
+		test_token(&mut l, Numero, Some("2.3"));
+		test_token(&mut l, Numero, Some("0.4"));
+		test_token(&mut l, Numero, Some("005"));
+		test_token(&mut l, Numero, Some("67.89"));
+		test_token(&mut l, EOF, None);
+	}
 
-#[test]
-fn operadores_basicos() {
-	use TipoToken::*;
+	#[test]
+	fn operadores_basicos() {
+		let mut l = Lexer::new("1 + 2 - 3 * 4 / 5 ^ 6");
 
-	let mut l = Lexer::new("1 + 2 - 3 * 4 / 5 ^ 6");
+		test_token(&mut l, Numero, Some("1"));
+		test_token(&mut l, Mais, Some("+"));
+		test_token(&mut l, Numero, Some("2"));
+		test_token(&mut l, Menos, Some("-"));
+		test_token(&mut l, Numero, Some("3"));
+		test_token(&mut l, Asterisco, Some("*"));
+		test_token(&mut l, Numero, Some("4"));
+		test_token(&mut l, Barra, Some("/"));
+		test_token(&mut l, Numero, Some("5"));
+		test_token(&mut l, Potencia, Some("^"));
+		test_token(&mut l, Numero, Some("6"));
+		test_token(&mut l, EOF, None);
+	}
 
-	assert_eq!(l.proximo_token().tipo(), Numero);
-	assert_eq!(l.proximo_token().tipo(), Mais);
-	assert_eq!(l.proximo_token().tipo(), Numero);
-	assert_eq!(l.proximo_token().tipo(), Menos);
-	assert_eq!(l.proximo_token().tipo(), Numero);
-	assert_eq!(l.proximo_token().tipo(), Asterisco);
-	assert_eq!(l.proximo_token().tipo(), Numero);
-	assert_eq!(l.proximo_token().tipo(), Barra);
-	assert_eq!(l.proximo_token().tipo(), Numero);
-	assert_eq!(l.proximo_token().tipo(), Potencia);
-	assert_eq!(l.proximo_token().tipo(), Numero);
-	assert_eq!(l.proximo_token().tipo(), EOF);
+	fn test_token(l: &mut Lexer, tipo: TipoToken, lexema: Option<&str>) {
+		let token = l.proximo_token();
+		assert_eq!(token.tipo(), tipo);
+		if let Some(l) = lexema {
+			assert_eq!(token.lexema(), l);
+		}
+	}
 }
