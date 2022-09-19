@@ -20,9 +20,10 @@ pub enum TipoToken {
 	Cosseno,    // cos
 	Integral,   // int
 
-	X,  // variável x
-	PI, // pi
-	E,  // e
+	X,       // variável x
+	Theta,   // θ
+	ConstPI, // pi
+	ConstE,  // e
 
 	Numero, // número
 
@@ -50,8 +51,9 @@ impl TipoToken {
 			Integral => Some("int"),
 
 			X => Some("x"),
-			PI => Some("pi"),
-			E => Some("e"),
+			Theta => Some("theta"),
+			ConstPI => Some("pi"),
+			ConstE => Some("e"),
 
 			Numero => None,
 
@@ -61,7 +63,7 @@ impl TipoToken {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Token {
 	tipo: TipoToken,
 	lexema: String,
