@@ -1,6 +1,8 @@
 use std::collections::HashMap;
+use strum::IntoEnumIterator;
+use strum_macros::EnumIter;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, EnumIter, Eq, PartialEq)]
 pub enum TipoToken {
 	AbreParenteses,  // (
 	FechaParenteses, // )
@@ -25,6 +27,38 @@ pub enum TipoToken {
 	Numero, // número
 
 	EOF, // fim de arquivo
+}
+
+impl TipoToken {
+	fn lexema_token(&self) -> Option<String> {
+		use TipoToken::*;
+		match self {
+			AbreParenteses => Some("("),
+			FechaParenteses => Some(")"),
+			Mais => Some("+"),
+			Menos => Some("-"),
+			Asterisco => Some("*"),
+			Barra => Some("/"),
+			Potencia => Some("^"),
+			Virgula => Some(","),
+
+			Raiz => Some("raiz"),
+			Log => Some("log"),
+			LogNatural => Some("ln"),
+			Seno => Some("sen"),
+			Cosseno => Some("cos"),
+			Integral => Some("int"),
+
+			X => Some("x"),
+			PI => Some("pi"),
+			E => Some("e"),
+
+			Numero => None,
+
+			EOF => None,
+		}
+		.map(|s| s.to_string())
+	}
 }
 
 #[derive(Debug)]
@@ -62,27 +96,13 @@ pub struct Lexer {
 
 impl Lexer {
 	pub fn new<T: ToString + ?Sized>(texto: &T) -> Self {
-		use TipoToken::*;
-
 		let mut tokens_com_texto_definido = HashMap::new();
 
-		tokens_com_texto_definido.insert("(".to_string(), AbreParenteses);
-		tokens_com_texto_definido.insert(")".to_string(), FechaParenteses);
-		tokens_com_texto_definido.insert("+".to_string(), Mais);
-		tokens_com_texto_definido.insert("-".to_string(), Menos);
-		tokens_com_texto_definido.insert("*".to_string(), Asterisco);
-		tokens_com_texto_definido.insert("/".to_string(), Barra);
-		tokens_com_texto_definido.insert("^".to_string(), Potencia);
-		tokens_com_texto_definido.insert(",".to_string(), Virgula);
-		tokens_com_texto_definido.insert("int".to_string(), Integral); //
-		tokens_com_texto_definido.insert("raiz".to_string(), Raiz); //
-		tokens_com_texto_definido.insert("log".to_string(), Log);
-		tokens_com_texto_definido.insert("ln".to_string(), LogNatural);
-		tokens_com_texto_definido.insert("sen".to_string(), Seno);
-		tokens_com_texto_definido.insert("cos".to_string(), Cosseno);
-		tokens_com_texto_definido.insert("x".to_string(), X);
-		tokens_com_texto_definido.insert("pi".to_string(), PI);
-		tokens_com_texto_definido.insert("e".to_string(), E);
+		for tipo in TipoToken::iter() {
+			if let Some(lexema) = tipo.lexema_token() {
+				tokens_com_texto_definido.insert(lexema, tipo);
+			}
+		}
 
 		Self {
 			caracteres: texto.to_string().chars().collect(),
