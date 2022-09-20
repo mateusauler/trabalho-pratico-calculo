@@ -1,8 +1,9 @@
-use std::collections::HashMap;
+use crate::ErroExpr;
+use std::{collections::HashMap, fmt::Display};
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
-#[derive(Clone, Copy, Debug, EnumIter, PartialEq)]
+#[derive(Clone, Copy, Debug, EnumIter, Eq, PartialEq)]
 pub enum TipoToken {
 	AbreParenteses,  // (
 	FechaParenteses, // )
@@ -79,6 +80,23 @@ impl Token {
 	}
 }
 
+#[derive(Debug)]
+pub enum ErroLex {
+	CaractereInesperado { c: char },
+	LexemaNaoReconhecido { lex: String },
+}
+
+impl ErroExpr for ErroLex {}
+
+impl Display for ErroLex {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			ErroLex::CaractereInesperado { c } => write!(f, "Caractere inesperado: '{c}'."),
+			ErroLex::LexemaNaoReconhecido { lex } => write!(f, "Token não reconhecido: \"{lex}\"."),
+		}
+	}
+}
+
 enum Estados {
 	Inicial,
 
@@ -112,17 +130,17 @@ impl Lexer {
 		}
 	}
 
-	pub fn proximo_token(&mut self) -> Token {
+	pub fn proximo_token(&mut self) -> Result<Token, Box<dyn ErroExpr>> {
 		use Estados::*;
 		use TipoToken::*;
 
 		let mut c = self.proximo_caractere();
 
 		if c.is_none() {
-			return Token {
+			return Ok(Token {
 				tipo: EOF,
 				lexema: String::new(),
-			};
+			});
 		}
 
 		let mut estado = Estados::Inicial;
@@ -130,12 +148,15 @@ impl Lexer {
 		let mut fim = false;
 
 		let mut tipo_token = None;
-		let mut lexema = String::from(c.unwrap());
+		let mut inicio_lex = self.caractere_atual - 1;
 
 		while !fim {
 			match estado {
 				Inicial => {
-					if let Some(t) = self.tokens_com_texto_definido.get(&lexema) {
+					if let Some(t) = self
+						.tokens_com_texto_definido
+						.get(&self.get_lexema(inicio_lex))
+					{
 						tipo_token = Some(*t);
 						fim = true;
 					} else {
@@ -151,9 +172,9 @@ impl Lexer {
 								backtrack = true;
 							}
 
-							Some(' ' | '\n' | '\r' | '\t') => lexema.clear(),
+							Some(' ' | '\n' | '\r' | '\t') => inicio_lex = self.caractere_atual,
 
-							Some(c) => caractere_inesperado(c),
+							Some(c) => return caractere_inesperado(c),
 
 							None => {
 								tipo_token = Some(EOF);
@@ -171,7 +192,7 @@ impl Lexer {
 
 				Ponto => match c {
 					Some('0'..='9') => estado = NumeroFracionario,
-					_ => token_nao_reconhecido(&lexema),
+					_ => return token_nao_reconhecido(self.get_lexema(inicio_lex)),
 				},
 
 				NumeroFracionario => match c {
@@ -187,45 +208,39 @@ impl Lexer {
 
 			if !fim {
 				c = self.proximo_caractere();
-				if let Some(c) = c {
-					lexema.push(c);
-				}
-			} else if backtrack && c.is_some() {
-				lexema.pop();
+			} else if backtrack {
 				self.caractere_atual -= 1;
 			}
 		}
 
-		if tipo_token.is_none() {
-			tipo_token = self.tokens_com_texto_definido.get(&lexema).cloned();
-			if tipo_token.is_none() {
-				token_nao_reconhecido(&lexema);
-			}
-		}
-
-		Token {
-			tipo: tipo_token.unwrap(),
-			lexema,
+		let lexema = self.get_lexema(inicio_lex);
+		match tipo_token.or_else(|| self.tokens_com_texto_definido.get(&lexema).cloned()) {
+			Some(tipo) => Ok(Token { tipo, lexema }),
+			None => token_nao_reconhecido(lexema),
 		}
 	}
 
 	fn proximo_caractere(&mut self) -> Option<char> {
-		let caractere = if self.caractere_atual >= self.caracteres.len() {
-			None
-		} else {
-			Some(self.caracteres[self.caractere_atual])
+		let caractere = match self.caractere_atual < self.caracteres.len() {
+			true => Some(self.caracteres[self.caractere_atual]),
+			false => None,
 		};
 		self.caractere_atual += 1;
-		return caractere;
+		caractere
+	}
+
+	fn get_lexema(&self, inicio: usize) -> String {
+		let fim = self.caractere_atual - (self.caractere_atual > self.caracteres.len()) as usize;
+		self.caracteres[inicio..fim].iter().collect()
 	}
 }
 
-fn token_nao_reconhecido(lexema: &String) {
-	panic!("Token não reconhecido: \"{lexema}\"");
+fn token_nao_reconhecido(lexema: String) -> Result<Token, Box<dyn ErroExpr>> {
+	Err(Box::new(ErroLex::LexemaNaoReconhecido { lex: lexema }))
 }
 
-fn caractere_inesperado(caractere: char) {
-	panic!("Caractere inesperado: '{caractere}'");
+fn caractere_inesperado(caractere: char) -> Result<Token, Box<dyn ErroExpr>> {
+	Err(Box::new(ErroLex::CaractereInesperado { c: caractere }))
 }
 
 #[cfg(test)]
@@ -273,7 +288,7 @@ mod testes {
 	}
 
 	fn test_token(l: &mut Lexer, tipo: TipoToken, lexema: Option<&str>) {
-		let token = l.proximo_token();
+		let token = l.proximo_token().unwrap();
 		assert_eq!(token.tipo(), tipo);
 		if let Some(l) = lexema {
 			assert_eq!(token.lexema(), l);
