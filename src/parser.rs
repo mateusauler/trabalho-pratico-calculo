@@ -34,34 +34,49 @@ impl ElementoGramatica for Token {
 
 #[derive(Debug)]
 pub enum Producao {
-	ExpBinaria(
-		Box<dyn ElementoGramatica>,
-		TipoToken,
-		Box<dyn ElementoGramatica>,
-	),
-	ExpUnaria(TipoToken, Box<dyn ElementoGramatica>),
-	ExpLog(Box<dyn ElementoGramatica>, Box<dyn ElementoGramatica>),
+	ExpBinaria {
+		esq: Box<dyn ElementoGramatica>,
+		op: TipoToken,
+		dir: Box<dyn ElementoGramatica>,
+	},
+
+	ExpUnaria {
+		operador: TipoToken,
+		operando: Box<dyn ElementoGramatica>,
+	},
+
+	ExpLog {
+		base: Box<dyn ElementoGramatica>,
+		logaritmando: Box<dyn ElementoGramatica>,
+	},
+
 	ExpLogNatural(Box<dyn ElementoGramatica>),
 	ExpSeno(Box<dyn ElementoGramatica>),
 	ExpCosseno(Box<dyn ElementoGramatica>),
 	ExpTangente(Box<dyn ElementoGramatica>),
-	ExpRaiz(Box<dyn ElementoGramatica>, Box<dyn ElementoGramatica>),
-	ExpIntegral(
-		Box<dyn ElementoGramatica>,
-		Box<dyn ElementoGramatica>,
-		Box<dyn ElementoGramatica>,
-	),
+
+	ExpRaiz {
+		indice: Box<dyn ElementoGramatica>,
+		radicando: Box<dyn ElementoGramatica>,
+	},
+
+	ExpIntegral {
+		inf: Box<dyn ElementoGramatica>,
+		sup: Box<dyn ElementoGramatica>,
+		fun: Box<dyn ElementoGramatica>,
+	},
+
 	Final(Token),
 }
 
 impl ElementoGramatica for Producao {
 	fn calcular_valor(&self, x: Option<f64>) -> f64 {
 		match self {
-			Producao::ExpBinaria(esq, operador, dir) => {
+			Producao::ExpBinaria { esq, op, dir } => {
 				let esq = esq.calcular_valor(x);
 				let dir = dir.calcular_valor(x);
 
-				match operador {
+				match op {
 					Mais => esq + dir,
 					Menos => esq - dir,
 					Asterisco => esq * dir,
@@ -70,7 +85,8 @@ impl ElementoGramatica for Producao {
 					_ => unreachable!(),
 				}
 			}
-			Producao::ExpUnaria(operador, operando) => {
+
+			Producao::ExpUnaria { operador, operando } => {
 				let operando = operando.calcular_valor(x);
 
 				match operador {
@@ -79,17 +95,26 @@ impl ElementoGramatica for Producao {
 					_ => unreachable!(),
 				}
 			}
-			Producao::ExpLog(base, logaritmando) => {
+
+			Producao::ExpLog { base, logaritmando } => {
 				logaritmando.calcular_valor(x).log(base.calcular_valor(x))
 			}
+
 			Producao::ExpLogNatural(logaritmando) => logaritmando.calcular_valor(x).ln(),
 			Producao::ExpSeno(v) => v.calcular_valor(x).sin(),
 			Producao::ExpCosseno(v) => v.calcular_valor(x).cos(),
 			Producao::ExpTangente(v) => v.calcular_valor(x).tan(),
-			Producao::ExpRaiz(indice, radicando) => radicando
+
+			Producao::ExpRaiz { indice, radicando } => radicando
 				.calcular_valor(x)
 				.powf(1.0 / indice.calcular_valor(x)),
-			Producao::ExpIntegral(_, _, _) => todo!(),
+
+			Producao::ExpIntegral {
+				inf: _,
+				sup: _,
+				fun: _,
+			} => todo!(),
+
 			Producao::Final(t) => t.calcular_valor(x),
 		}
 	}
@@ -120,7 +145,7 @@ pub struct Parser {
 impl Parser {
 	pub fn new<T: ToString + ?Sized>(texto: &T) -> Result<Self, Box<dyn ErroExpr>> {
 		let mut lexer = Lexer::new(texto);
-		let proximo_token = (&lexer.proximo_token()?).to_owned();
+		let proximo_token = lexer.proximo_token()?;
 		Ok(Self {
 			lexer,
 			proximo_token,
@@ -155,7 +180,11 @@ impl Parser {
 		while let Mais | Menos = tipo {
 			self.consome_token(tipo)?;
 			let dir = self.exp_mul()?;
-			esq = Producao::ExpBinaria(Box::from(esq), tipo, Box::from(dir));
+			esq = Producao::ExpBinaria {
+				esq: Box::from(esq),
+				op: tipo,
+				dir: Box::from(dir),
+			};
 			tipo = self.proximo_token.tipo();
 		}
 
@@ -169,7 +198,11 @@ impl Parser {
 		while let Asterisco | Barra = tipo {
 			self.consome_token(tipo)?;
 			let dir = self.exp_pot()?;
-			esq = Producao::ExpBinaria(Box::from(esq), tipo, Box::from(dir));
+			esq = Producao::ExpBinaria {
+				esq: Box::from(esq),
+				op: tipo,
+				dir: Box::from(dir),
+			};
 			tipo = self.proximo_token.tipo();
 		}
 
@@ -182,11 +215,11 @@ impl Parser {
 		if self.proximo_token.tipo() == Potencia {
 			self.consome_token(Potencia)?;
 			let expoente = self.exp_pot()?;
-			Ok(Producao::ExpBinaria(
-				Box::from(base),
-				Potencia,
-				Box::from(expoente),
-			))
+			Ok(Producao::ExpBinaria {
+				esq: Box::from(base),
+				op: Potencia,
+				dir: Box::from(expoente),
+			})
 		} else {
 			Ok(base)
 		}
@@ -231,8 +264,8 @@ impl Parser {
 			| ConstPI | ConstE | Numero | Eof => self.consome_token(Menos)?,
 		};
 
-		let operando = self.exp_final()?;
-		Ok(Producao::ExpUnaria(operador, Box::from(operando)))
+		let operando = Box::from(self.exp_final()?);
+		Ok(Producao::ExpUnaria { operador, operando })
 	}
 
 	fn log_natural(&mut self) -> Result<Producao, Box<dyn ErroExpr>> {
@@ -247,12 +280,12 @@ impl Parser {
 	fn log(&mut self) -> Result<Producao, Box<dyn ErroExpr>> {
 		self.consome_token(Log)?;
 		self.consome_token(AbreParenteses)?;
-		let base = self.exp()?;
+		let base = Box::from(self.exp()?);
 		self.consome_token(Virgula)?;
-		let logaritmando = self.exp()?;
+		let logaritmando = Box::from(self.exp()?);
 		self.consome_token(FechaParenteses)?;
 
-		Ok(Producao::ExpLog(Box::from(base), Box::from(logaritmando)))
+		Ok(Producao::ExpLog { base, logaritmando })
 	}
 
 	fn trig(&mut self) -> Result<Producao, Box<dyn ErroExpr>> {
@@ -283,28 +316,24 @@ impl Parser {
 	fn raiz(&mut self) -> Result<Producao, Box<dyn ErroExpr>> {
 		self.consome_token(Raiz)?;
 		self.consome_token(AbreParenteses)?;
-		let indice = self.exp()?;
+		let indice = Box::from(self.exp()?);
 		self.consome_token(Virgula)?;
-		let radicando = self.exp()?;
+		let radicando = Box::from(self.exp()?);
 		self.consome_token(FechaParenteses)?;
 
-		Ok(Producao::ExpRaiz(Box::from(indice), Box::from(radicando)))
+		Ok(Producao::ExpRaiz { indice, radicando })
 	}
 
 	fn integral(&mut self) -> Result<Producao, Box<dyn ErroExpr>> {
 		self.consome_token(Integral)?;
 		self.consome_token(AbreParenteses)?;
-		let limite_inferior = Box::from(self.exp()?);
+		let inf = Box::from(self.exp()?);
 		self.consome_token(Virgula)?;
-		let limite_superior = Box::from(self.exp()?);
+		let sup = Box::from(self.exp()?);
 		self.consome_token(Virgula)?;
-		let funcao = Box::from(self.exp()?);
+		let fun = Box::from(self.exp()?);
 
-		Ok(Producao::ExpIntegral(
-			limite_inferior,
-			limite_superior,
-			funcao,
-		))
+		Ok(Producao::ExpIntegral { inf, sup, fun })
 	}
 
 	fn token_inesperado(&self) -> Result<Producao, Box<dyn ErroExpr>> {
