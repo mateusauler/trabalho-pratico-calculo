@@ -29,7 +29,7 @@ pub enum TipoToken {
 
 	Numero, // número
 
-	EOF, // fim de arquivo
+	Eof, // fim de arquivo
 }
 
 impl TipoToken {
@@ -60,7 +60,7 @@ impl TipoToken {
 
 			Numero => None,
 
-			EOF => None,
+			Eof => None,
 		}
 		.map(|s| s.to_string())
 	}
@@ -140,7 +140,7 @@ impl Lexer {
 
 		if c.is_none() {
 			return Ok(Token {
-				tipo: EOF,
+				tipo: Eof,
 				lexema: String::new(),
 			});
 		}
@@ -179,7 +179,7 @@ impl Lexer {
 							Some(c) => return caractere_inesperado(c),
 
 							None => {
-								tipo_token = Some(EOF);
+								tipo_token = Some(Eof);
 								fim = true;
 							}
 						}
@@ -255,7 +255,7 @@ mod testes {
 	#[test]
 	fn ignorar_espacos() {
 		let mut l = Lexer::new("  \t \n  \r  \r\n\t ");
-		test_token(&mut l, EOF, None)
+		test_token(&mut l, Eof, None)
 	}
 
 	#[test]
@@ -268,7 +268,7 @@ mod testes {
 		test_token(&mut l, Numero, Some("0.4"));
 		test_token(&mut l, Numero, Some("005"));
 		test_token(&mut l, Numero, Some("67.89"));
-		test_token(&mut l, EOF, None);
+		test_token(&mut l, Eof, None);
 	}
 
 	#[test]
@@ -286,7 +286,7 @@ mod testes {
 		test_token(&mut l, Numero, Some("5"));
 		test_token(&mut l, Potencia, Some("^"));
 		test_token(&mut l, Numero, Some("6"));
-		test_token(&mut l, EOF, None);
+		test_token(&mut l, Eof, None);
 	}
 
 	fn test_token(l: &mut Lexer, tipo: TipoToken, lexema: Option<&str>) {

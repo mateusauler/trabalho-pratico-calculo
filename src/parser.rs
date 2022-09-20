@@ -129,12 +129,12 @@ impl Parser {
 
 	pub fn parse(&mut self) -> Result<Producao, Box<dyn ErroExpr>> {
 		let ast = match self.proximo_token.tipo() {
-			FechaParenteses | Asterisco | Barra | Potencia | Virgula | EOF => {
+			FechaParenteses | Asterisco | Barra | Potencia | Virgula | Eof => {
 				self.token_inesperado()?
 			}
 			_ => self.exp()?,
 		};
-		self.consome_token(EOF)?;
+		self.consome_token(Eof)?;
 		Ok(ast)
 	}
 
@@ -211,7 +211,7 @@ impl Parser {
 			Integral => self.integral(),
 
 			FechaParenteses | Asterisco | Barra | Potencia | Virgula => self.token_inesperado(),
-			EOF => Parser::final_inesperado(),
+			Eof => Parser::final_inesperado(),
 		}
 	}
 
@@ -228,7 +228,7 @@ impl Parser {
 			Mais => self.consome_token(Mais)?,
 			AbreParenteses | FechaParenteses | Menos | Asterisco | Barra | Potencia | Virgula
 			| Raiz | Log | LogNatural | Seno | Cosseno | Tangente | Integral | X | Theta
-			| ConstPI | ConstE | Numero | EOF => self.consome_token(Menos)?,
+			| ConstPI | ConstE | Numero | Eof => self.consome_token(Menos)?,
 		};
 
 		let operando = self.exp_final()?;
@@ -262,7 +262,7 @@ impl Parser {
 			Cosseno => self.consome_token(Cosseno)?,
 			Tangente | AbreParenteses | FechaParenteses | Mais | Menos | Asterisco | Barra
 			| Potencia | Virgula | Raiz | Log | LogNatural | Integral | X | Theta | ConstPI
-			| ConstE | Numero | EOF => self.consome_token(Tangente)?,
+			| ConstE | Numero | Eof => self.consome_token(Tangente)?,
 		};
 
 		self.consome_token(AbreParenteses)?;
@@ -276,7 +276,7 @@ impl Parser {
 
 			AbreParenteses | FechaParenteses | Mais | Menos | Asterisco | Barra | Potencia
 			| Virgula | Raiz | Log | LogNatural | Integral | X | Theta | ConstPI | ConstE
-			| Numero | EOF => unreachable!(),
+			| Numero | Eof => unreachable!(),
 		}
 	}
 
