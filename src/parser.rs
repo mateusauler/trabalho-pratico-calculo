@@ -44,6 +44,7 @@ pub enum Producao {
 	ExpLogNatural(Box<dyn ElementoGramatica>),
 	ExpSeno(Box<dyn ElementoGramatica>),
 	ExpCosseno(Box<dyn ElementoGramatica>),
+	ExpTangente(Box<dyn ElementoGramatica>),
 	ExpRaiz(Box<dyn ElementoGramatica>, Box<dyn ElementoGramatica>),
 	ExpIntegral(
 		Box<dyn ElementoGramatica>,
@@ -84,6 +85,7 @@ impl ElementoGramatica for Producao {
 			Producao::ExpLogNatural(logaritmando) => logaritmando.calcular_valor(x).ln(),
 			Producao::ExpSeno(v) => v.calcular_valor(x).sin(),
 			Producao::ExpCosseno(v) => v.calcular_valor(x).cos(),
+			Producao::ExpTangente(v) => v.calcular_valor(x).tan(),
 			Producao::ExpRaiz(indice, radicando) => radicando
 				.calcular_valor(x)
 				.powf(1.0 / indice.calcular_valor(x)),
@@ -205,7 +207,7 @@ impl Parser {
 			Raiz => self.raiz(),
 			Log => self.log(),
 			LogNatural => self.log_natural(),
-			Seno | Cosseno => self.trig(),
+			Seno | Cosseno | Tangente => self.trig(),
 			Integral => self.integral(),
 
 			FechaParenteses | Asterisco | Barra | Potencia | Virgula => self.token_inesperado(),
@@ -224,7 +226,9 @@ impl Parser {
 		let operador = self.proximo_token.tipo();
 		match operador {
 			Mais => self.consome_token(Mais)?,
-			_ => self.consome_token(Menos)?,
+			AbreParenteses | FechaParenteses | Menos | Asterisco | Barra | Potencia | Virgula
+			| Raiz | Log | LogNatural | Seno | Cosseno | Tangente | Integral | X | Theta
+			| ConstPI | ConstE | Numero | EOF => self.consome_token(Menos)?,
 		};
 
 		let operando = self.exp_final()?;
@@ -255,7 +259,10 @@ impl Parser {
 		let operacao = self.proximo_token.tipo();
 		match operacao {
 			Seno => self.consome_token(Seno)?,
-			_ => self.consome_token(Cosseno)?,
+			Cosseno => self.consome_token(Cosseno)?,
+			Tangente | AbreParenteses | FechaParenteses | Mais | Menos | Asterisco | Barra
+			| Potencia | Virgula | Raiz | Log | LogNatural | Integral | X | Theta | ConstPI
+			| ConstE | Numero | EOF => self.consome_token(Tangente)?,
 		};
 
 		self.consome_token(AbreParenteses)?;
@@ -265,7 +272,11 @@ impl Parser {
 		match operacao {
 			Seno => Ok(Producao::ExpSeno(Box::from(argumento))),
 			Cosseno => Ok(Producao::ExpCosseno(Box::from(argumento))),
-			_ => unreachable!(),
+			Tangente => Ok(Producao::ExpTangente(Box::from(argumento))),
+
+			AbreParenteses | FechaParenteses | Mais | Menos | Asterisco | Barra | Potencia
+			| Virgula | Raiz | Log | LogNatural | Integral | X | Theta | ConstPI | ConstE
+			| Numero | EOF => unreachable!(),
 		}
 	}
 

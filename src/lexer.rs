@@ -19,6 +19,7 @@ pub enum TipoToken {
 	LogNatural, // ln
 	Seno,       // sen
 	Cosseno,    // cos
+	Tangente,   // tan
 	Integral,   // int
 
 	X,       // variável x
@@ -49,6 +50,7 @@ impl TipoToken {
 			LogNatural => Some("ln"),
 			Seno => Some("sen"),
 			Cosseno => Some("cos"),
+			Tangente => Some("tan"),
 			Integral => Some("int"),
 
 			X => Some("x"),
