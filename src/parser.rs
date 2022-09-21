@@ -212,10 +212,13 @@ impl Parser {
 	}
 
 	fn consome_token(&mut self, token_esperado: TipoToken) -> Result<(), Erro> {
-		if self.proximo_token.tipo() != token_esperado {
+		if self.proximo_token.tipo() == token_esperado {
+			self.proximo_token = self.lexer.proximo_token()?;
+		} else if self.proximo_token.tipo() == Eof {
+			Parser::final_inesperado()?;
+		} else {
 			self.token_inesperado()?;
 		}
-		self.proximo_token = self.lexer.proximo_token()?;
 		Ok(())
 	}
 
@@ -259,7 +262,7 @@ impl Parser {
 		let mut tipo = self.proximo_token.tipo();
 		while let Mais | Menos = tipo {
 			self.consome_token(tipo)?;
-			let dir = self.exp_mul()?;
+			let dir = self.exp_unaria()?;
 			let esq_w = wrap(esq);
 			let dir_w = wrap(dir);
 			let prop = Parser::merge_props(vec![&esq_w, &dir_w])?;
@@ -275,6 +278,32 @@ impl Parser {
 		}
 
 		Ok(esq)
+	}
+
+	fn exp_unaria(&mut self) -> Result<Producao, Erro> {
+		let tipo = self.proximo_token.tipo();
+		match tipo {
+			Mais => self.consome_token(Mais)?,
+			Menos => self.consome_token(Menos)?,
+			_ => (),
+		};
+
+		let operando = self.exp_mul()?;
+
+		match tipo {
+			Mais | Menos => {
+				let prop = operando.prop;
+				let operando = wrap(operando);
+				Ok(Producao::new(
+					TipoProducao::ExpUnaria {
+						operador: tipo,
+						operando,
+					},
+					Some(prop),
+				))
+			}
+			_ => Ok(operando),
+		}
 	}
 
 	fn exp_mul(&mut self) -> Result<Producao, Erro> {
@@ -352,24 +381,6 @@ impl Parser {
 		let exp = self.exp()?;
 		self.consome_token(FechaParenteses)?;
 		Ok(exp)
-	}
-
-	fn exp_unaria(&mut self) -> Result<Producao, Erro> {
-		let operador = self.proximo_token.tipo();
-		match operador {
-			Mais => self.consome_token(Mais)?,
-			AbreParenteses | FechaParenteses | Menos | Asterisco | Barra | Potencia | Virgula
-			| Raiz | Log | LogNatural | Seno | Cosseno | Tangente | Integral | X | Theta
-			| ConstPI | ConstE | Numero | Eof => self.consome_token(Menos)?,
-		};
-
-		let operando = self.exp_final()?;
-		let prop = operando.prop;
-		let operando = wrap(operando);
-		Ok(Producao::new(
-			TipoProducao::ExpUnaria { operador, operando },
-			Some(prop),
-		))
 	}
 
 	fn log_natural(&mut self) -> Result<Producao, Erro> {
