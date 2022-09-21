@@ -84,8 +84,8 @@ impl Token {
 
 #[derive(Debug)]
 pub enum ErroLex {
-	CaractereInesperado { c: char },
-	LexemaNaoReconhecido { lex: String },
+	CaractereInesperado(char),
+	LexemaNaoReconhecido(String),
 }
 
 impl ErroExpr for ErroLex {}
@@ -93,8 +93,8 @@ impl ErroExpr for ErroLex {}
 impl Display for ErroLex {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
-			ErroLex::CaractereInesperado { c } => write!(f, "Caractere inesperado: '{c}'."),
-			ErroLex::LexemaNaoReconhecido { lex } => write!(f, "Token não reconhecido: \"{lex}\"."),
+			ErroLex::CaractereInesperado(c) => write!(f, "Caractere inesperado: '{c}'."),
+			ErroLex::LexemaNaoReconhecido(lex) => write!(f, "Token não reconhecido: \"{lex}\"."),
 		}
 	}
 }
@@ -216,6 +216,7 @@ impl Lexer {
 		}
 
 		let lexema = self.get_lexema(inicio_lex);
+
 		match tipo_token.or_else(|| self.tokens_com_texto_definido.get(&lexema).cloned()) {
 			Some(tipo) => Ok(Token { tipo, lexema }),
 			None => token_nao_reconhecido(lexema),
@@ -237,12 +238,12 @@ impl Lexer {
 	}
 }
 
-fn token_nao_reconhecido(lexema: String) -> Result<Token, Box<dyn ErroExpr>> {
-	Err(Box::new(ErroLex::LexemaNaoReconhecido { lex: lexema }))
+fn token_nao_reconhecido(lex: String) -> Result<Token, Box<dyn ErroExpr>> {
+	Err(Box::new(ErroLex::LexemaNaoReconhecido(lex)))
 }
 
 fn caractere_inesperado(caractere: char) -> Result<Token, Box<dyn ErroExpr>> {
-	Err(Box::new(ErroLex::CaractereInesperado { c: caractere }))
+	Err(Box::new(ErroLex::CaractereInesperado(caractere)))
 }
 
 #[cfg(test)]
