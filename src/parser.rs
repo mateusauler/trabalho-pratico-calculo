@@ -257,7 +257,7 @@ impl Parser {
 	}
 
 	fn exp(&mut self) -> Result<Producao, Erro> {
-		let mut esq = self.exp_mul()?;
+		let mut esq = self.exp_unaria()?;
 
 		let mut tipo = self.proximo_token.tipo();
 		while let Mais | Menos = tipo {
@@ -283,26 +283,19 @@ impl Parser {
 	fn exp_unaria(&mut self) -> Result<Producao, Erro> {
 		let tipo = self.proximo_token.tipo();
 		match tipo {
-			Mais => self.consome_token(Mais)?,
-			Menos => self.consome_token(Menos)?,
-			_ => (),
-		};
-
-		let operando = self.exp_mul()?;
-
-		match tipo {
 			Mais | Menos => {
+				self.consome_token(tipo)?;
+				let operando = self.exp_unaria()?;
 				let prop = operando.prop;
-				let operando = wrap(operando);
 				Ok(Producao::new(
 					TipoProducao::ExpUnaria {
 						operador: tipo,
-						operando,
+						operando: wrap(operando),
 					},
 					Some(prop),
 				))
 			}
-			_ => Ok(operando),
+			_ => self.exp_mul(),
 		}
 	}
 
@@ -361,8 +354,6 @@ impl Parser {
 				Ok(Producao::from_token(token))
 			}
 
-			Mais | Menos => self.exp_unaria(),
-
 			AbreParenteses => self.exp_parenteses(),
 
 			Raiz => self.raiz(),
@@ -371,7 +362,9 @@ impl Parser {
 			Seno | Cosseno | Tangente => self.trig(),
 			Integral => self.integral(),
 
-			FechaParenteses | Asterisco | Barra | Potencia | Virgula => self.token_inesperado(),
+			FechaParenteses | Asterisco | Barra | Potencia | Virgula | Mais | Menos => {
+				self.token_inesperado()
+			}
 			Eof => Parser::final_inesperado(),
 		}
 	}
