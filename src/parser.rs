@@ -75,7 +75,7 @@ impl Producao {
 				Theta => Some(Variavel::Theta),
 				_ => None,
 			},
-			_ => prop.map(|p| p.variavel).flatten(),
+			_ => prop.and_then(|p| p.variavel),
 		};
 
 		let prop = Propriedades {
@@ -86,17 +86,17 @@ impl Producao {
 		Self { tipo, prop }
 	}
 
-	pub fn calcular_valor(&mut self, x: Option<f64>) -> Option<f64> {
+	pub fn calcular_valor(&mut self, x: Option<f64>, parser: &Parser) -> Option<f64> {
 		if self.prop.valor.is_some() {
 			return self.prop.valor;
 		}
 
 		let calc_valor =
-			|v: &mut Rc<Producao>| Rc::get_mut(v).map(|v| v.calcular_valor(x)).flatten();
+			|v: &mut Rc<Producao>| Rc::get_mut(v).and_then(|v| v.calcular_valor(x, parser));
 
-		let valor =
-			match &mut self.tipo {
-				TipoProducao::ExpBinaria { esq, op, dir } => calc_valor(esq)
+		let valor = match &mut self.tipo {
+			TipoProducao::ExpBinaria { esq, op, dir } => {
+				calc_valor(esq)
 					.zip(calc_valor(dir))
 					.map(|(esq, dir)| match op {
 						Mais => esq + dir,
@@ -105,44 +105,60 @@ impl Producao {
 						Barra => esq / dir,
 						Potencia => esq.powf(dir),
 						_ => unreachable!(),
-					}),
-
-				TipoProducao::ExpUnaria { operador, operando } => {
-					calc_valor(operando).map(|o| match operador {
-						Mais => o,
-						Menos => -o,
-						_ => unreachable!(),
 					})
-				}
+			}
 
-				TipoProducao::ExpLog { base, logaritmando } => calc_valor(logaritmando)
-					.zip(calc_valor(base))
-					.map(|(l, b)| l.log(b)),
-
-				TipoProducao::ExpLogNatural(logaritmando) => calc_valor(logaritmando).map(f64::ln),
-				TipoProducao::ExpSeno(v) => calc_valor(v).map(f64::sin),
-				TipoProducao::ExpCosseno(v) => calc_valor(v).map(f64::cos),
-				TipoProducao::ExpTangente(v) => calc_valor(v).map(f64::tan),
-
-				TipoProducao::ExpRaiz { indice, radicando } => calc_valor(radicando)
-					.zip(calc_valor(indice))
-					.map(|(r, i)| r.powf(1.0 / i)),
-
-				TipoProducao::ExpIntegral {
-					inf: _,
-					sup: _,
-					fun: _,
-				} => todo!(),
-
-				TipoProducao::Final(t) => match t.tipo() {
-					X => x,
-					Theta => x,
-					ConstPI => Some(PI),
-					ConstE => Some(E),
-					Numero => Some(t.lexema().parse().unwrap()),
+			TipoProducao::ExpUnaria { operador, operando } => {
+				calc_valor(operando).map(|o| match operador {
+					Mais => o,
+					Menos => -o,
 					_ => unreachable!(),
-				},
-			};
+				})
+			}
+
+			TipoProducao::ExpLog { base, logaritmando } => calc_valor(logaritmando)
+				.zip(calc_valor(base))
+				.map(|(l, b)| l.log(b)),
+
+			TipoProducao::ExpLogNatural(logaritmando) => calc_valor(logaritmando).map(f64::ln),
+			TipoProducao::ExpSeno(v) => calc_valor(v).map(f64::sin),
+			TipoProducao::ExpCosseno(v) => calc_valor(v).map(f64::cos),
+			TipoProducao::ExpTangente(v) => calc_valor(v).map(f64::tan),
+
+			TipoProducao::ExpRaiz { indice, radicando } => calc_valor(radicando)
+				.zip(calc_valor(indice))
+				.map(|(r, i)| r.powf(1.0 / i)),
+
+			TipoProducao::ExpIntegral { inf, sup, fun } => {
+				let precisao = parser.precisao;
+
+				let sup = calc_valor(sup);
+				let inf = calc_valor(inf);
+				let inf_sup = inf.zip(sup);
+				let step = inf_sup.map(|(inf, sup)| (sup - inf) / precisao as f64);
+
+				inf_sup.zip(step).and_then(|((inf, sup), step)| {
+					let mut x = inf;
+					let mut total = Some(0.0);
+					while x < sup && total.is_some() {
+						total = total
+							.zip(Rc::get_mut(fun).and_then(|v| v.calcular_valor(Some(x), parser)))
+							.map(|(t, s)| t + step * s);
+						x += step;
+					}
+					total
+				})
+			}
+
+			TipoProducao::Final(t) => match t.tipo() {
+				X => x,
+				Theta => x,
+				ConstPI => Some(PI),
+				ConstE => Some(E),
+				Numero => Some(t.lexema().parse().unwrap()),
+				_ => unreachable!(),
+			},
+		};
 
 		if self.prop.variavel.is_none() {
 			self.prop.valor = valor;
@@ -437,7 +453,7 @@ impl Parser {
 		let fun = Rc::new(self.exp()?);
 		self.consome_token(FechaParenteses)?;
 
-		if inf.prop.variavel.or_else(|| sup.prop.variavel).is_some() {
+		if inf.prop.variavel.or(sup.prop.variavel).is_some() {
 			return Err(Box::new(ErroParser::LimitesIntegralComVariavel));
 		}
 
