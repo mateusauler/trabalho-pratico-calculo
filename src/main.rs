@@ -21,14 +21,11 @@ fn main() {
 	let resultado = run(exp, precisao);
 
 	match resultado {
-		Ok(Some(r)) => println!("Resultado: {r}."),
-		Ok(None) => println!("Sem resultado."),
+		Ok(r) => println!("{r}"),
 		Err(e) => eprintln!("{e}"),
 	}
 }
 
-fn run(exp: String, precisao: u32) -> Result<Option<f64>, Box<dyn ErroExpr>> {
-	let mut p = parser::Parser::new(&exp, precisao)?;
-	let mut parsed = p.parse()?;
-	Ok(parsed.calcular_valor(None, &p))
+fn run(exp: String, precisao: u32) -> Result<f64, Box<dyn ErroExpr>> {
+	parser::Parser::new(&exp, precisao)?.calcular_valor()
 }

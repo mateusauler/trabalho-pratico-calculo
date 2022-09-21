@@ -7,9 +7,9 @@ use crate::{
 	ErroExpr,
 };
 use std::{
+	cell::RefCell,
 	f64::consts::{E, PI},
 	fmt::{Debug, Display},
-	rc::Rc,
 };
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -24,41 +24,54 @@ pub struct Propriedades {
 	valor: Option<f64>,
 }
 
+type Prd = Box<RefCell<Producao>>;
+type Erro = Box<dyn ErroExpr>;
+
+fn wrap(valor: Producao) -> Prd {
+	Box::from(RefCell::from(valor))
+}
+
 #[derive(Debug, Clone)]
 pub enum TipoProducao {
-	ExpBinaria {
-		esq: Rc<Producao>,
-		op: TipoToken,
-		dir: Rc<Producao>,
-	},
-
-	ExpUnaria {
-		operador: TipoToken,
-		operando: Rc<Producao>,
-	},
-
-	ExpLog {
-		base: Rc<Producao>,
-		logaritmando: Rc<Producao>,
-	},
-
-	ExpLogNatural(Rc<Producao>),
-	ExpSeno(Rc<Producao>),
-	ExpCosseno(Rc<Producao>),
-	ExpTangente(Rc<Producao>),
-
-	ExpRaiz {
-		indice: Rc<Producao>,
-		radicando: Rc<Producao>,
-	},
-
-	ExpIntegral {
-		inf: Rc<Producao>,
-		sup: Rc<Producao>,
-		fun: Rc<Producao>,
-	},
-
+	ExpBinaria { esq: Prd, op: TipoToken, dir: Prd },
+	ExpUnaria { operador: TipoToken, operando: Prd },
+	ExpLog { base: Prd, logaritmando: Prd },
+	ExpLogNatural(Prd),
+	ExpSeno(Prd),
+	ExpCosseno(Prd),
+	ExpTangente(Prd),
+	ExpRaiz { indice: Prd, radicando: Prd },
+	ExpIntegral { inf: Prd, sup: Prd, fun: Prd },
 	Final(Token),
+}
+
+#[derive(Debug)]
+enum ErroParser {
+	TokenInesperado { lex: String },
+	FinalInesperado,
+	SomenteUmaVariavelPermitida,
+	LimitesIntegralComVariavel,
+	ErroInesperado,
+}
+
+impl ErroExpr for ErroParser {}
+
+impl Display for ErroParser {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			ErroParser::TokenInesperado { lex } => write!(f, "Token inesperado: \"{lex}\"."),
+			ErroParser::FinalInesperado => write!(f, "Final inesperado."),
+			ErroParser::SomenteUmaVariavelPermitida => {
+				write!(f, "Somente uma variável é permitida em uma expressão.")
+			}
+			ErroParser::LimitesIntegralComVariavel => write!(f, "As expressões dos limites de uma integral não podem incluir a variável de integração."),
+			ErroParser::ErroInesperado => write!(f, "Erro inesperado")
+		}
+	}
+}
+
+fn valor_ou_erro_generico<T>(opcao: Option<T>) -> Result<T, Erro> {
+	opcao.ok_or_else(|| -> Erro { Box::from(ErroParser::ErroInesperado) })
 }
 
 #[derive(Debug, Clone)]
@@ -86,108 +99,84 @@ impl Producao {
 		Self { tipo, prop }
 	}
 
-	pub fn calcular_valor(&mut self, x: Option<f64>, parser: &Parser) -> Option<f64> {
-		if self.prop.valor.is_some() {
-			return self.prop.valor;
+	fn from_token(token: Token) -> Self {
+		Producao::new(TipoProducao::Final(token), None)
+	}
+
+	pub fn calcular_valor(&mut self, x: Option<f64>, precisao: u32) -> Result<f64, Erro> {
+		if let Some(valor) = self.prop.valor {
+			return Ok(valor);
 		}
 
-		let calc_valor =
-			|v: &mut Rc<Producao>| Rc::get_mut(v).and_then(|v| v.calcular_valor(x, parser));
+		let calc_valor = |v: &mut Prd| v.borrow_mut().calcular_valor(x, precisao);
 
 		let valor = match &mut self.tipo {
 			TipoProducao::ExpBinaria { esq, op, dir } => {
-				calc_valor(esq)
-					.zip(calc_valor(dir))
-					.map(|(esq, dir)| match op {
-						Mais => esq + dir,
-						Menos => esq - dir,
-						Asterisco => esq * dir,
-						Barra => esq / dir,
-						Potencia => esq.powf(dir),
-						_ => unreachable!(),
-					})
+				let esq = calc_valor(esq)?;
+				let dir = calc_valor(dir)?;
+				match op {
+					Mais => esq + dir,
+					Menos => esq - dir,
+					Asterisco => esq * dir,
+					Barra => esq / dir,
+					Potencia => esq.powf(dir),
+					_ => unreachable!(),
+				}
 			}
 
 			TipoProducao::ExpUnaria { operador, operando } => {
-				calc_valor(operando).map(|o| match operador {
+				let o = calc_valor(operando)?;
+				match operador {
 					Mais => o,
 					Menos => -o,
 					_ => unreachable!(),
-				})
+				}
 			}
 
-			TipoProducao::ExpLog { base, logaritmando } => calc_valor(logaritmando)
-				.zip(calc_valor(base))
-				.map(|(l, b)| l.log(b)),
+			TipoProducao::ExpLog { base, logaritmando } => {
+				calc_valor(logaritmando)?.log(calc_valor(base)?)
+			}
 
-			TipoProducao::ExpLogNatural(logaritmando) => calc_valor(logaritmando).map(f64::ln),
-			TipoProducao::ExpSeno(v) => calc_valor(v).map(f64::sin),
-			TipoProducao::ExpCosseno(v) => calc_valor(v).map(f64::cos),
-			TipoProducao::ExpTangente(v) => calc_valor(v).map(f64::tan),
+			TipoProducao::ExpLogNatural(logaritmando) => calc_valor(logaritmando)?.ln(),
+			TipoProducao::ExpSeno(v) => calc_valor(v)?.sin(),
+			TipoProducao::ExpCosseno(v) => calc_valor(v)?.cos(),
+			TipoProducao::ExpTangente(v) => calc_valor(v)?.tan(),
 
-			TipoProducao::ExpRaiz { indice, radicando } => calc_valor(radicando)
-				.zip(calc_valor(indice))
-				.map(|(r, i)| r.powf(1.0 / i)),
+			TipoProducao::ExpRaiz { indice, radicando } => {
+				calc_valor(radicando)?.powf(1.0 / calc_valor(indice)?)
+			}
 
 			TipoProducao::ExpIntegral { inf, sup, fun } => {
-				let precisao = parser.precisao;
+				let sup = calc_valor(sup)?;
+				let inf = calc_valor(inf)?;
+				let delta_x = (sup - inf) / precisao as f64;
 
-				let sup = calc_valor(sup);
-				let inf = calc_valor(inf);
-				let inf_sup = inf.zip(sup);
-				let step = inf_sup.map(|(inf, sup)| (sup - inf) / precisao as f64);
+				let mut x = inf;
+				let mut total = 0.0;
 
-				inf_sup.zip(step).and_then(|((inf, sup), step)| {
-					let mut x = inf;
-					let mut total = Some(0.0);
-					while x < sup && total.is_some() {
-						total = total
-							.zip(Rc::get_mut(fun).and_then(|v| v.calcular_valor(Some(x), parser)))
-							.map(|(t, s)| t + step * s);
-						x += step;
-					}
-					total
-				})
+				while x < sup {
+					total += fun.borrow_mut().calcular_valor(Some(x), precisao)? * delta_x;
+					x += delta_x;
+				}
+
+				total
 			}
 
 			TipoProducao::Final(t) => match t.tipo() {
-				X => x,
-				Theta => x,
-				ConstPI => Some(PI),
-				ConstE => Some(E),
-				Numero => Some(t.lexema().parse().unwrap()),
+				X => valor_ou_erro_generico(x)?,
+				Theta => valor_ou_erro_generico(x)?,
+				ConstPI => PI,
+				ConstE => E,
+				Numero => valor_ou_erro_generico(t.lexema().parse().ok())?,
 				_ => unreachable!(),
 			},
 		};
 
 		if self.prop.variavel.is_none() {
-			self.prop.valor = valor;
+			self.prop.valor = Some(valor);
 		}
 
-		valor
-	}
-}
-
-#[derive(Debug)]
-enum ErroParser {
-	TokenInesperado { lex: String },
-	FinalInesperado,
-	SomenteUmaVariavelPermitida,
-	LimitesIntegralComVariavel,
-}
-
-impl ErroExpr for ErroParser {}
-
-impl Display for ErroParser {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		match self {
-			ErroParser::TokenInesperado { lex } => write!(f, "Token inesperado: \"{lex}\"."),
-			ErroParser::FinalInesperado => write!(f, "Final inesperado."),
-			ErroParser::SomenteUmaVariavelPermitida => {
-				write!(f, "Somente uma variável é permitida em uma expressão.")
-			}
-			ErroParser::LimitesIntegralComVariavel => write!(f, "As expressões dos limites de uma integral não podem incluir a variável de integração."),
-		}
+		Ok(valor)
 	}
 }
 
@@ -195,20 +184,42 @@ pub struct Parser {
 	lexer: Lexer,
 	proximo_token: Token,
 	precisao: u32,
+	ast: Option<Producao>,
 }
 
 impl Parser {
-	pub fn new<T: ToString + ?Sized>(texto: &T, precisao: u32) -> Result<Self, Box<dyn ErroExpr>> {
+	pub fn new<T: ToString + ?Sized>(texto: &T, precisao: u32) -> Result<Self, Erro> {
 		let mut lexer = Lexer::new(texto);
 		let proximo_token = lexer.proximo_token()?;
 		Ok(Self {
 			lexer,
 			proximo_token,
 			precisao,
+			ast: None,
 		})
 	}
 
-	pub fn parse(&mut self) -> Result<Producao, Box<dyn ErroExpr>> {
+	pub fn calcular_valor(&mut self) -> Result<f64, Erro> {
+		let p = self.precisao;
+		self.parse()?.calcular_valor(None, p)
+	}
+
+	fn parse(&mut self) -> Result<&mut Producao, Erro> {
+		if self.ast.is_none() {
+			self.ast = Some(self.do_parse()?);
+		}
+		valor_ou_erro_generico(self.ast.as_mut())
+	}
+
+	fn consome_token(&mut self, token_esperado: TipoToken) -> Result<(), Erro> {
+		if self.proximo_token.tipo() != token_esperado {
+			self.token_inesperado()?;
+		}
+		self.proximo_token = self.lexer.proximo_token()?;
+		Ok(())
+	}
+
+	fn do_parse(&mut self) -> Result<Producao, Erro> {
 		let ast = match self.proximo_token.tipo() {
 			FechaParenteses | Asterisco | Barra | Potencia | Virgula | Eof => {
 				self.token_inesperado()?
@@ -219,17 +230,7 @@ impl Parser {
 		Ok(ast)
 	}
 
-	fn consome_token(&mut self, token_esperado: TipoToken) -> Result<Producao, Box<dyn ErroExpr>> {
-		if self.proximo_token.tipo() != token_esperado {
-			self.token_inesperado()?;
-		}
-
-		let ast = Producao::new(TipoProducao::Final(self.proximo_token.clone()), None);
-		self.proximo_token = self.lexer.proximo_token()?;
-		Ok(ast)
-	}
-
-	fn merge_props(elementos: Vec<&Producao>) -> Result<Propriedades, Box<dyn ErroExpr>> {
+	fn merge_props(elementos: Vec<&Prd>) -> Result<Propriedades, Erro> {
 		if elementos.is_empty() {
 			return Ok(Propriedades {
 				variavel: None,
@@ -239,7 +240,7 @@ impl Parser {
 
 		let mut var = None;
 
-		for el in elementos.iter().map(|el| el.prop.variavel) {
+		for el in elementos.iter().map(|el| el.borrow().prop.variavel) {
 			if var.zip(el).filter(|(e, d)| e != d).is_some() {
 				return Err(Box::new(ErroParser::SomenteUmaVariavelPermitida));
 			}
@@ -252,19 +253,21 @@ impl Parser {
 		})
 	}
 
-	fn exp(&mut self) -> Result<Producao, Box<dyn ErroExpr>> {
+	fn exp(&mut self) -> Result<Producao, Erro> {
 		let mut esq = self.exp_mul()?;
 
 		let mut tipo = self.proximo_token.tipo();
 		while let Mais | Menos = tipo {
 			self.consome_token(tipo)?;
 			let dir = self.exp_mul()?;
-			let prop = Parser::merge_props(vec![&esq, &dir])?;
+			let esq_w = wrap(esq);
+			let dir_w = wrap(dir);
+			let prop = Parser::merge_props(vec![&esq_w, &dir_w])?;
 			esq = Producao::new(
 				TipoProducao::ExpBinaria {
-					esq: Rc::from(esq),
+					esq: esq_w,
 					op: tipo,
-					dir: Rc::from(dir),
+					dir: dir_w,
 				},
 				Some(prop),
 			);
@@ -274,19 +277,21 @@ impl Parser {
 		Ok(esq)
 	}
 
-	fn exp_mul(&mut self) -> Result<Producao, Box<dyn ErroExpr>> {
+	fn exp_mul(&mut self) -> Result<Producao, Erro> {
 		let mut esq = self.exp_pot()?;
 
 		let mut tipo = self.proximo_token.tipo();
 		while let Asterisco | Barra = tipo {
 			self.consome_token(tipo)?;
 			let dir = self.exp_pot()?;
-			let prop = Parser::merge_props(vec![&esq, &dir])?;
+			let esq_w = wrap(esq);
+			let dir_w = wrap(dir);
+			let prop = Parser::merge_props(vec![&esq_w, &dir_w])?;
 			esq = Producao::new(
 				TipoProducao::ExpBinaria {
-					esq: Rc::from(esq),
+					esq: esq_w,
 					op: tipo,
-					dir: Rc::from(dir),
+					dir: dir_w,
 				},
 				Some(prop),
 			);
@@ -296,18 +301,20 @@ impl Parser {
 		Ok(esq)
 	}
 
-	fn exp_pot(&mut self) -> Result<Producao, Box<dyn ErroExpr>> {
+	fn exp_pot(&mut self) -> Result<Producao, Erro> {
 		let base = self.exp_final()?;
 
 		if self.proximo_token.tipo() == Potencia {
 			self.consome_token(Potencia)?;
 			let expoente = self.exp_pot()?;
-			let prop = Parser::merge_props(vec![&base, &expoente])?;
+			let esq = wrap(base);
+			let dir = wrap(expoente);
+			let prop = Parser::merge_props(vec![&esq, &dir])?;
 			Ok(Producao::new(
 				TipoProducao::ExpBinaria {
-					esq: Rc::from(base),
+					esq,
 					op: Potencia,
-					dir: Rc::from(expoente),
+					dir,
 				},
 				Some(prop),
 			))
@@ -316,13 +323,14 @@ impl Parser {
 		}
 	}
 
-	fn exp_final(&mut self) -> Result<Producao, Box<dyn ErroExpr>> {
-		match self.proximo_token.tipo() {
-			X => self.consome_token(X),
-			Theta => self.consome_token(Theta),
-			ConstPI => self.consome_token(ConstPI),
-			ConstE => self.consome_token(ConstE),
-			Numero => self.consome_token(Numero),
+	fn exp_final(&mut self) -> Result<Producao, Erro> {
+		let tipo = self.proximo_token.tipo();
+		match tipo {
+			X | Theta | ConstPI | ConstE | Numero => {
+				let token = self.proximo_token.clone();
+				self.consome_token(tipo)?;
+				Ok(Producao::from_token(token))
+			}
 
 			Mais | Menos => self.exp_unaria(),
 
@@ -339,14 +347,14 @@ impl Parser {
 		}
 	}
 
-	fn exp_parenteses(&mut self) -> Result<Producao, Box<dyn ErroExpr>> {
+	fn exp_parenteses(&mut self) -> Result<Producao, Erro> {
 		self.consome_token(AbreParenteses)?;
 		let exp = self.exp()?;
 		self.consome_token(FechaParenteses)?;
 		Ok(exp)
 	}
 
-	fn exp_unaria(&mut self) -> Result<Producao, Box<dyn ErroExpr>> {
+	fn exp_unaria(&mut self) -> Result<Producao, Erro> {
 		let operador = self.proximo_token.tipo();
 		match operador {
 			Mais => self.consome_token(Mais)?,
@@ -355,15 +363,16 @@ impl Parser {
 			| ConstPI | ConstE | Numero | Eof => self.consome_token(Menos)?,
 		};
 
-		let operando = Rc::new(self.exp_final()?);
+		let operando = self.exp_final()?;
 		let prop = operando.prop;
+		let operando = wrap(operando);
 		Ok(Producao::new(
 			TipoProducao::ExpUnaria { operador, operando },
 			Some(prop),
 		))
 	}
 
-	fn log_natural(&mut self) -> Result<Producao, Box<dyn ErroExpr>> {
+	fn log_natural(&mut self) -> Result<Producao, Erro> {
 		self.consome_token(LogNatural)?;
 		self.consome_token(AbreParenteses)?;
 		let logaritmando = self.exp()?;
@@ -371,17 +380,17 @@ impl Parser {
 
 		let prop = logaritmando.prop;
 		Ok(Producao::new(
-			TipoProducao::ExpLogNatural(Rc::from(logaritmando)),
+			TipoProducao::ExpLogNatural(wrap(logaritmando)),
 			Some(prop),
 		))
 	}
 
-	fn log(&mut self) -> Result<Producao, Box<dyn ErroExpr>> {
+	fn log(&mut self) -> Result<Producao, Erro> {
 		self.consome_token(Log)?;
 		self.consome_token(AbreParenteses)?;
-		let base = Rc::new(self.exp()?);
+		let base = wrap(self.exp()?);
 		self.consome_token(Virgula)?;
-		let logaritmando = Rc::new(self.exp()?);
+		let logaritmando = wrap(self.exp()?);
 		self.consome_token(FechaParenteses)?;
 
 		let prop = Parser::merge_props(vec![&base, &logaritmando])?;
@@ -391,7 +400,7 @@ impl Parser {
 		))
 	}
 
-	fn trig(&mut self) -> Result<Producao, Box<dyn ErroExpr>> {
+	fn trig(&mut self) -> Result<Producao, Erro> {
 		let operacao = self.proximo_token.tipo();
 		match operacao {
 			Seno => self.consome_token(Seno)?,
@@ -407,32 +416,25 @@ impl Parser {
 
 		let prop = argumento.prop;
 
-		match operacao {
-			Seno => Ok(Producao::new(
-				TipoProducao::ExpSeno(Rc::from(argumento)),
-				Some(prop),
-			)),
-			Cosseno => Ok(Producao::new(
-				TipoProducao::ExpCosseno(Rc::from(argumento)),
-				Some(prop),
-			)),
-			Tangente => Ok(Producao::new(
-				TipoProducao::ExpTangente(Rc::from(argumento)),
-				Some(prop),
-			)),
+		let tipo = match operacao {
+			Seno => TipoProducao::ExpSeno(wrap(argumento)),
+			Cosseno => TipoProducao::ExpCosseno(wrap(argumento)),
+			Tangente => TipoProducao::ExpTangente(wrap(argumento)),
 
 			AbreParenteses | FechaParenteses | Mais | Menos | Asterisco | Barra | Potencia
 			| Virgula | Raiz | Log | LogNatural | Integral | X | Theta | ConstPI | ConstE
 			| Numero | Eof => unreachable!(),
-		}
+		};
+
+		Ok(Producao::new(tipo, Some(prop)))
 	}
 
-	fn raiz(&mut self) -> Result<Producao, Box<dyn ErroExpr>> {
+	fn raiz(&mut self) -> Result<Producao, Erro> {
 		self.consome_token(Raiz)?;
 		self.consome_token(AbreParenteses)?;
-		let indice = Rc::new(self.exp()?);
+		let indice = wrap(self.exp()?);
 		self.consome_token(Virgula)?;
-		let radicando = Rc::new(self.exp()?);
+		let radicando = wrap(self.exp()?);
 		self.consome_token(FechaParenteses)?;
 
 		let prop = Parser::merge_props(vec![&indice, &radicando])?;
@@ -443,21 +445,27 @@ impl Parser {
 		))
 	}
 
-	fn integral(&mut self) -> Result<Producao, Box<dyn ErroExpr>> {
+	fn integral(&mut self) -> Result<Producao, Erro> {
 		self.consome_token(Integral)?;
 		self.consome_token(AbreParenteses)?;
-		let inf = Rc::new(self.exp()?);
+		let inf = wrap(self.exp()?);
 		self.consome_token(Virgula)?;
-		let sup = Rc::new(self.exp()?);
+		let sup = wrap(self.exp()?);
 		self.consome_token(Virgula)?;
-		let fun = Rc::new(self.exp()?);
+		let fun = wrap(self.exp()?);
 		self.consome_token(FechaParenteses)?;
 
-		if inf.prop.variavel.or(sup.prop.variavel).is_some() {
+		if inf
+			.borrow()
+			.prop
+			.variavel
+			.or(sup.borrow().prop.variavel)
+			.is_some()
+		{
 			return Err(Box::new(ErroParser::LimitesIntegralComVariavel));
 		}
 
-		let prop = fun.prop;
+		let prop = fun.borrow().prop;
 
 		Ok(Producao::new(
 			TipoProducao::ExpIntegral { inf, sup, fun },
@@ -465,13 +473,13 @@ impl Parser {
 		))
 	}
 
-	fn token_inesperado(&self) -> Result<Producao, Box<dyn ErroExpr>> {
+	fn token_inesperado(&self) -> Result<Producao, Erro> {
 		Err(Box::new(ErroParser::TokenInesperado {
 			lex: self.proximo_token.lexema().to_owned(),
 		}))
 	}
 
-	fn final_inesperado() -> Result<Producao, Box<dyn ErroExpr>> {
+	fn final_inesperado() -> Result<Producao, Erro> {
 		Err(Box::new(ErroParser::FinalInesperado))
 	}
 }
