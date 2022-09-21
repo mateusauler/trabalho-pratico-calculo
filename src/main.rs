@@ -9,7 +9,7 @@ use trabalho_pratico::{parser, ErroExpr};
 struct Args {
 	/// A expressão a ser avaliada
 	exp: String,
-	/// A precisão com a qual uma integral deve ser avaliada
+	/// A precisão com a qual uma integral deve ser avaliada (1000 por padrão)
 	precisao: Option<u32>,
 }
 
