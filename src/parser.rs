@@ -204,13 +204,6 @@ impl Parser {
 		self.parse()?.calcular_valor(None, p)
 	}
 
-	fn parse(&mut self) -> Result<&mut Producao, Erro> {
-		if self.ast.is_none() {
-			self.ast = Some(self.do_parse()?);
-		}
-		valor_ou_erro_generico(self.ast.as_mut())
-	}
-
 	fn consome_token(&mut self, token_esperado: TipoToken) -> Result<(), Erro> {
 		if self.proximo_token.tipo() == token_esperado {
 			self.proximo_token = self.lexer.proximo_token()?;
@@ -222,15 +215,12 @@ impl Parser {
 		Ok(())
 	}
 
-	fn do_parse(&mut self) -> Result<Producao, Erro> {
-		let ast = match self.proximo_token.tipo() {
-			FechaParenteses | Asterisco | Barra | Potencia | Virgula | Eof => {
-				self.token_inesperado()?
-			}
-			_ => self.exp()?,
-		};
-		self.consome_token(Eof)?;
-		Ok(ast)
+	fn parse(&mut self) -> Result<&mut Producao, Erro> {
+		if self.ast.is_none() {
+			self.ast = Some(self.exp()?);
+			self.consome_token(Eof)?;
+		}
+		valor_ou_erro_generico(self.ast.as_mut())
 	}
 
 	fn merge_props(elementos: Vec<&Prd>) -> Result<Propriedades, Erro> {
