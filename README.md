@@ -1,6 +1,6 @@
 ## Como Utilizar
 
-### Baixar o `cargo`
+### Baixar o cargo
   - Seguindo as [instruções oficiais](https://doc.rust-lang.org/cargo/getting-started/installation.html)
   - Ou utilizando o gerenciador de pacotes da sua distribuição de Linux
 
@@ -9,8 +9,8 @@
   - Execute `git clone https://github.com/mateusauler/trabalho-pratico-calculo.git <DIR> && cd <DIR>`, substituindo `<DIR>` pelo nome do diretório desejado. 
 
 ### Execução
-  - Execute `cargo run --release --` ou `cargo run --release -q --`, seguido da expressão entre áspas e, opcionalmente, o número de passos do somatório de Riemann para o cálculo de integrais.
-  Ex.: cargo run --release -q -- "int(1, 3, -x^2 + 4*x - 3)" 100000
+Execute `cargo run --release --` ou `cargo run --release -q --`, seguido da expressão entre áspas e, opcionalmente, o número de passos do somatório de Riemann para o cálculo de integrais.  
+Ex.: `cargo run --release -q -- "int(1, 3, -x^2 + 4*x - 3)" 100000`
 
 ### Formato das expressões
 As expressões são combinações dos seguintes elementos:
@@ -18,7 +18,7 @@ As expressões são combinações dos seguintes elementos:
   - Logarítmo: `log(<base>, <logaritmando>)`
   - Logarítmo natural: `ln(<logaritmando>)`
   - Seno, Cosseno, Tangente: `<sen | cos | tan> (<função>)`
-  - Raíz: `raiz(<índice>, <função>)`
+  - Raíz: `raiz(<índice>, <radicando>)`
   - Constante de Euler: `e`
   - Constante π: `pi`
   - Variável x: `x`
@@ -30,7 +30,7 @@ As expressões são combinações dos seguintes elementos:
   - Potenciação: `<base> ^ <expoente>`
   - Unária: `[- | +] <função>`
 
-### Resultados com a precisão padrão de 1000
+## Resultados com a precisão padrão de 1000
 
   - int(1, 3, -x^2 + 4*x - 3): 1.333332000000073
   - int(ln(2), 3, 5 * e^x): 90.55509492517142
