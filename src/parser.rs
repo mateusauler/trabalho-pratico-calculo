@@ -19,7 +19,7 @@ enum Variavel {
 }
 
 #[derive(Debug, Copy, Clone)]
-pub struct Propriedades {
+struct Propriedades {
 	variavel: Option<Variavel>,
 	valor: Option<f64>,
 }
@@ -32,7 +32,7 @@ fn wrap(valor: Producao) -> Prd {
 }
 
 #[derive(Debug, Clone)]
-pub enum TipoProducao {
+enum TipoProducao {
 	ExpBinaria { esq: Prd, op: TipoToken, dir: Prd },
 	ExpUnaria { operador: TipoToken, operando: Prd },
 	ExpLog { base: Prd, logaritmando: Prd },
@@ -75,7 +75,7 @@ fn valor_ou_erro_generico<T>(opcao: Option<T>) -> Result<T, Erro> {
 }
 
 #[derive(Debug, Clone)]
-pub struct Producao {
+struct Producao {
 	tipo: TipoProducao,
 	prop: Propriedades,
 }
@@ -103,7 +103,7 @@ impl Producao {
 		Producao::new(TipoProducao::Final(token), None)
 	}
 
-	pub fn calcular_valor(&mut self, x: Option<f64>, precisao: u32) -> Result<f64, Erro> {
+	fn calcular_valor(&mut self, x: Option<f64>, precisao: u32) -> Result<f64, Erro> {
 		if let Some(valor) = self.prop.valor {
 			return Ok(valor);
 		}
